@@ -40,6 +40,27 @@ export async function fetchColumnValues(datasetId, column) {
 }
 
 export async function exportFiltered(datasetId, filters, format = 'csv', filename = 'filtered_data') {
+  const fullFilename = `${filename}.${format}`;
+
+  // Acquire file handle BEFORE the fetch so the user gesture is still active
+  let handle = null;
+  if (window.showSaveFilePicker) {
+    const mimeType = format === 'csv' ? 'text/csv' : 'application/octet-stream';
+    const ext = `.${format}`;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: fullFilename,
+        types: [{
+          description: format === 'csv' ? 'CSV file' : 'Parquet file',
+          accept: { [mimeType]: [ext] },
+        }],
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') return; // user cancelled
+      throw err;
+    }
+  }
+
   const res = await fetch(`${BASE}/export/${datasetId}?format=${format}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,26 +68,11 @@ export async function exportFiltered(datasetId, filters, format = 'csv', filenam
   });
   if (!res.ok) throw new Error('Export failed');
   const blob = await res.blob();
-  const fullFilename = `${filename}.${format}`;
 
-  if (window.showSaveFilePicker) {
-    const mimeType = format === 'csv' ? 'text/csv' : 'application/octet-stream';
-    const ext = `.${format}`;
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fullFilename,
-        types: [{
-          description: format === 'csv' ? 'CSV file' : 'Parquet file',
-          accept: { [mimeType]: [ext] },
-        }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-    } catch (err) {
-      if (err.name === 'AbortError') return; // user cancelled
-      throw err;
-    }
+  if (handle) {
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
   } else {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

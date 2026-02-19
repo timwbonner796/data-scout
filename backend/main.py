@@ -7,16 +7,19 @@ import io
 import os
 import uuid
 import tempfile
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 app = FastAPI(title="Data Scout API")
+router = APIRouter()
 
 app.add_middleware(
     CORSMiddleware,
@@ -194,7 +197,7 @@ def compute_pearson_correlation(df: pl.DataFrame) -> dict:
             else:
                 arr = pair.to_numpy()
                 r = np.corrcoef(arr, rowvar=False)[0, 1]
-                matrix[i][j] = matrix[j][i] = round(float(np.nan_to_num(r, 0.0)), 4)
+                matrix[i][j] = matrix[j][i] = round(float(np.nan_to_num(r, nan=0.0)), 4)
 
     return {
         "columns": numeric_cols,
@@ -268,7 +271,7 @@ def compute_cramers_v(df: pl.DataFrame) -> dict:
 
                 v = np.sqrt(chi2 / (n * (min(r, k) - 1))) if min(r, k) > 1 else 0
                 v = min(v, 1.0)  # Clamp
-                matrix[i][j] = matrix[j][i] = round(float(np.nan_to_num(v, 0.0)), 4)
+                matrix[i][j] = matrix[j][i] = round(float(np.nan_to_num(v, nan=0.0)), 4)
 
             except Exception:
                 matrix[i][j] = matrix[j][i] = 0.0
@@ -316,7 +319,7 @@ def apply_filters(df: pl.DataFrame, filters: list[FilterSpec]) -> pl.DataFrame:
 
 # ── Endpoints ───────────────────────────────────────────────────────────
 
-@app.post("/upload")
+@router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload CSV or Excel file, return dataset ID and column info."""
     dataset_id = str(uuid.uuid4())[:8]
@@ -361,7 +364,7 @@ async def upload_file(file: UploadFile = File(...)):
     }
 
 
-@app.get("/eda/{dataset_id}")
+@router.get("/eda/{dataset_id}")
 async def get_eda(dataset_id: str):
     """Full EDA: histograms for every column + missing data summary."""
     if dataset_id not in datasets:
@@ -377,7 +380,7 @@ async def get_eda(dataset_id: str):
     return {"histograms": histograms}
 
 
-@app.get("/correlation/{dataset_id}")
+@router.get("/correlation/{dataset_id}")
 async def get_correlation(dataset_id: str, method: str = Query("pearson")):
     """Correlation matrix. method=pearson or cramers_v."""
     if dataset_id not in datasets:
@@ -391,7 +394,7 @@ async def get_correlation(dataset_id: str, method: str = Query("pearson")):
         return compute_pearson_correlation(df)
 
 
-@app.post("/filter/{dataset_id}")
+@router.post("/filter/{dataset_id}")
 async def filter_data(dataset_id: str, request: FilterRequest):
     """Apply filters and return row count + preview."""
     if dataset_id not in datasets:
@@ -426,7 +429,7 @@ async def filter_data(dataset_id: str, request: FilterRequest):
     }
 
 
-@app.post("/export/{dataset_id}")
+@router.post("/export/{dataset_id}")
 async def export_data(dataset_id: str, request: FilterRequest, format: str = Query("csv")):
     """Export filtered dataset as CSV or Parquet."""
     if dataset_id not in datasets:
@@ -455,7 +458,7 @@ async def export_data(dataset_id: str, request: FilterRequest, format: str = Que
         )
 
 
-@app.get("/column-values/{dataset_id}/{column}")
+@router.get("/column-values/{dataset_id}/{column}")
 async def get_column_values(dataset_id: str, column: str, limit: int = Query(200)):
     """Get unique values for a column (for filter dropdowns)."""
     if dataset_id not in datasets:
@@ -477,6 +480,25 @@ async def get_column_values(dataset_id: str, column: str, limit: int = Query(200
     }
 
 
-@app.get("/health")
+@router.get("/health")
 async def health():
     return {"status": "ok", "datasets_loaded": len(datasets)}
+
+
+# ── Router mounting & static files ──────────────────────────────────────
+
+# Mount at root (direct access / local dev) and at /api (frontend in Docker)
+app.include_router(router)
+app.include_router(router, prefix="/api")
+
+# Serve frontend static files in production (Docker)
+STATIC_DIR = Path("/app/static")
+if STATIC_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="static-assets")
+
+    @app.get("/{path:path}")
+    async def spa_fallback(path: str):
+        file_path = STATIC_DIR / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(STATIC_DIR / "index.html")
