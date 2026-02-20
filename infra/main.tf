@@ -193,3 +193,19 @@ resource "aws_eip_association" "app" {
   instance_id   = aws_instance.app.id
   allocation_id = aws_eip.app.id
 }
+
+# ─── DNS ─────────────────────────────────────────────────────────────────────
+
+# Look up the hosted zone that Route 53 created when we registered the domain
+data "aws_route53_zone" "main" {
+  name = "momentscout.com"
+}
+
+# Point datascout.momentscout.com to our elastic IP
+resource "aws_route53_record" "datascout" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "datascout.momentscout.com"
+  type    = "A"
+  ttl     = 300
+  records = [aws_eip.app.public_ip]
+}

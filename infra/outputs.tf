@@ -1,7 +1,4 @@
-output "instance_public_ip" {
-  description = "Public IP address of the EC2 instance"
-  value       = aws_instance.app.public_ip
-}
+
 
 output "ecr_repository_url" {
   description = "ECR repository URL for pushing Docker images"
@@ -15,7 +12,7 @@ output "ssh_command" {
 
 output "app_url" {
   description = "URL to access Data Scout"
-  value       = "http://${aws_instance.app.public_ip}:${var.app_port}"
+  value       = "http://datascout.momentscout.com:${var.app_port}"
 }
 
 output "elastic_ip" {
