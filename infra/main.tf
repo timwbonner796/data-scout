@@ -41,15 +41,6 @@ resource "aws_security_group" "app" {
   name        = "data-scout-sg"
   description = "Allow app and SSH traffic"
 
-  # Application port — open to the internet
-  ingress {
-    description = "App traffic"
-    from_port   = var.app_port
-    to_port     = var.app_port
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   # SSH — open to the internet for convenience.
   # In production, restrict this to your IP (e.g. "203.0.113.10/32").
   ingress {
