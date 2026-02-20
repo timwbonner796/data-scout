@@ -1,0 +1,24 @@
+output "instance_public_ip" {
+  description = "Public IP address of the EC2 instance"
+  value       = aws_instance.app.public_ip
+}
+
+output "ecr_repository_url" {
+  description = "ECR repository URL for pushing Docker images"
+  value       = aws_ecr_repository.app.repository_url
+}
+
+output "ssh_command" {
+  description = "SSH command to connect to the instance"
+  value       = "ssh -i ${local_file.ssh_key.filename} ec2-user@${aws_instance.app.public_ip}"
+}
+
+output "app_url" {
+  description = "URL to access Data Scout"
+  value       = "http://${aws_instance.app.public_ip}:${var.app_port}"
+}
+
+output "elastic_ip" {
+  value       = aws_eip.app.public_ip
+  description = "Static public IP for the instance"
+}

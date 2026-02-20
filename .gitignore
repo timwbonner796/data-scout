@@ -1,8 +1,36 @@
+# Dependencies
 node_modules/
 backend/.venv/
+
+# Python
 __pycache__/
 *.pyc
-.env
-dist/
-.DS_Store
 *.egg-info/
+
+# Environment
+.env
+*.env.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.pem
+crash.log
+override.tf
+override.tf.json
+
+# Docker
+*.tar.gz
+
+# OS
+.DS_Store
+
+# Data (add if you store datasets locally)
+# data/
+# *.csv
+# *.parquet
+
+# Build
+dist/
