@@ -41,16 +41,6 @@ resource "aws_security_group" "app" {
   name        = "data-scout-sg"
   description = "Allow app and SSH traffic"
 
-  # SSH — open to the internet for convenience.
-  # In production, restrict this to your IP (e.g. "203.0.113.10/32").
-  ingress {
-    description = "SSH access (restrict in production)"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   # HTTPS traffic
   ingress {
     description = "HTTPS"
@@ -125,6 +115,12 @@ resource "aws_iam_role_policy_attachment" "ecr_read" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Allow Session Manager access (replaces SSH)
+resource "aws_iam_role_policy_attachment" "ssm" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 # Instance profile is the "wrapper" that lets us attach the IAM role to an EC2 instance
 resource "aws_iam_instance_profile" "ec2" {
   name = "data-scout-ec2-profile"
@@ -139,6 +135,11 @@ resource "aws_instance" "app" {
   key_name               = aws_key_pair.app.key_name
   vpc_security_group_ids = [aws_security_group.app.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
+
+  root_block_device {
+    volume_size = 20  # GB
+    volume_type = "gp3"
+  }
 
   # Startup script: install Docker, pull our image from ECR, and run it.
   # This runs once when the instance first boots.
