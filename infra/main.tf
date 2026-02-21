@@ -39,6 +39,7 @@ resource "aws_ecr_repository" "app" {
 # Firewall rules controlling which traffic can reach (and leave) the instance
 resource "aws_security_group" "app" {
   name        = "data-scout-sg"
+  # Note: description is outdated — SSH removed, now serves HTTPS/HTTP only
   description = "Allow app and SSH traffic"
 
   # HTTPS traffic
@@ -147,21 +148,57 @@ resource "aws_instance" "app" {
     #!/bin/bash
     set -e
 
-    # Install Docker
+    # ─── Docker ──────────────────────────────────────────────────────
     yum update -y
     yum install -y docker
     systemctl start docker
     systemctl enable docker
 
-    # Authenticate to ECR (the instance role grants read-only access)
+    # Authenticate to ECR and pull the app
     aws ecr get-login-password --region ${var.region} \
       | docker login --username AWS --password-stdin \
         ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com
-
-    # Pull and run the application
     docker pull ${aws_ecr_repository.app.repository_url}:latest
     docker run -d --restart unless-stopped -p ${var.app_port}:${var.app_port} \
       ${aws_ecr_repository.app.repository_url}:latest
+
+    # ─── SSM Agent ───────────────────────────────────────────────────
+    yum install -y amazon-ssm-agent
+    systemctl start amazon-ssm-agent
+    systemctl enable amazon-ssm-agent
+
+    # ─── nginx + Certbot ─────────────────────────────────────────────
+    yum install -y nginx httpd-tools certbot python3-certbot-nginx
+
+    # Create basic auth credentials
+    htpasswd -cb /etc/nginx/.htpasswd ${var.auth_username} ${var.auth_password}
+
+    # Write nginx config
+    cat > /etc/nginx/conf.d/datascout.conf <<'NGINX'
+    server {
+        listen 80;
+        server_name datascout.momentscout.com;
+
+        location / {
+            auth_basic "Data Scout";
+            auth_basic_user_file /etc/nginx/.htpasswd;
+
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    NGINX
+
+    systemctl start nginx
+    systemctl enable nginx
+
+    # Get HTTPS certificate (non-interactive)
+    certbot --nginx -d datascout.momentscout.com \
+      --non-interactive --agree-tos --email ${var.cert_email} \
+      --redirect
   EOF
 
   tags = {

@@ -15,3 +15,18 @@ variable "app_port" {
   type        = number
   default     = 8000
 }
+
+variable "auth_username" {
+  description = "Basic auth username for the app"
+  default     = "datascout"
+}
+
+variable "auth_password" {
+  description = "Basic auth password for the app"
+  sensitive   = true
+}
+
+variable "cert_email" {
+  description = "Email for Let's Encrypt certificate notifications"
+  sensitive   = true
+}
