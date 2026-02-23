@@ -178,6 +178,7 @@ resource "aws_instance" "app" {
     server {
         listen 80;
         server_name datascout.momentscout.com;
+        client_max_body_size 100M;
 
         location / {
             auth_basic "Data Scout";
